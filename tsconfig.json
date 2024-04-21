@@ -1,6 +1,11 @@
 {
-    "compilerOptions": {
-      "target": "es2020",
-      "moduleResolution": "node"
+  "compilerOptions": {
+    "target": "es2020",
+    "moduleResolution": "node",
+    "baseUrl": "./",
+    "paths": {
+      "@flatfile/plugin-dedupe": ["node_modules/@flatfile/plugin-dedupe"],
+      "remeda": ["node_modules/remeda"]
     }
   }
+}

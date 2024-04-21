@@ -8,8 +8,14 @@
 import { FlatfileListener } from "@flatfile/listener";
 import { recordHook, FlatfileRecord } from "@flatfile/plugin-record-hook";
 import { Client, FlatfileEvent } from "@flatfile/listener";
-import api from "@flatfile/api";
+import api, { Flatfile } from "@flatfile/api";
 import axios from "axios";
+
+import { dedupePlugin } from "@flatfile/plugin-dedupe";
+import { PhoneNumberUtil } from "google-libphonenumber";
+import { execSync } from "child_process";
+import * as R from "remeda";
+import * as path from "path";
 
 // TODO: Update this with your webhook.site URL for Part 4
 const webhookReceiver = process.env.WEBHOOK_SITE_URL || "YOUR_WEBHOOK_URL";
@@ -22,120 +28,17 @@ export default function flatfileEventListener(listener: Client) {
   });
 
   listener.namespace(["space:red"], (red: FlatfileListener) => {
-    // Part 2: Configure a Space (https://flatfile.com/docs/apps/custom)
-    red
-      .filter({ job: "space:configure" })
-      .on("job:ready", async (event: FlatfileEvent) => {
-        const { spaceId, environmentId, jobId } = event.context;
-        try {
-          await api.jobs.ack(jobId, {
-            info: "Gettin started.",
-            progress: 10,
-          });
+    // Part 2: Automate space creation
+    const scriptPath = path.resolve("./scripts/create-workbook.sh");
+    console.log(`Script path resolved to: ${scriptPath}`);
 
-          await api.workbooks.create({
-            spaceId,
-            environmentId,
-            name: "All Data",
-            labels: ["pinned"],
-            sheets: [
-              {
-                name: "Contacts",
-                slug: "contacts",
-                fields: [
-                  {
-                    key: "firstName",
-                    type: "string",
-                    label: "First Name",
-                  },
-                  {
-                    key: "lastName",
-                    type: "string",
-                    label: "Last Name",
-                  },
-                  {
-                    key: "email",
-                    type: "string",
-                    label: "Email",
-                  },
-                ],
-              },
-              {
-                name: "Sheet 2",
-                slug: "sheet2",
-                fields: [
-                  {
-                    key: "firstName",
-                    type: "string",
-                    label: "First Name",
-                  },
-                  {
-                    key: "lastName",
-                    type: "string",
-                    label: "Last Name",
-                  },
-                  {
-                    key: "email",
-                    type: "string",
-                    label: "Email",
-                  },
-                ],
-              },
-            ],
-            actions: [
-              {
-                operation: "submitAction",
-                mode: "foreground",
-                label: "Submit foreground",
-                description: "Submit data to webhook.site",
-                primary: true,
-              },
-            ],
-          });
-
-          const doc = await api.documents.create(spaceId, {
-            title: "Getting Started",
-            body:
-              "# Welcome\n" +
-              "### Say hello to your first customer Space in the new Flatfile!\n" +
-              "Let's begin by first getting acquainted with what you're seeing in your Space initially.\n" +
-              "---\n",
-          });
-
-          await api.spaces.update(spaceId, {
-            environmentId,
-            metadata: {
-              theme: {
-                root: {
-                  primaryColor: "red",
-                },
-                sidebar: {
-                  backgroundColor: "red",
-                  textColor: "white",
-                  activeTextColor: "midnightblue",
-                },
-                // See reference for all possible variables
-              },
-            },
-          });
-
-          await api.jobs.complete(jobId, {
-            outcome: {
-              message: "Your Space was created. Let's get started.",
-              acknowledge: true,
-            },
-          });
-        } catch (error) {
-          console.error("Error:", error.stack);
-
-          await api.jobs.fail(jobId, {
-            outcome: {
-              message: "Creating a Space encountered an error. See Event Logs.",
-              acknowledge: true,
-            },
-          });
-        }
-      });
+    try {
+      const output = execSync(`bash ${scriptPath}`, { encoding: "utf-8" });
+      console.log(output);
+    } catch (error) {
+      console.error("Error running create-workbook.sh:", error.message);
+      console.error("Stack Trace:", error.stack);
+    }
 
     // Part 3: Transform and validate (https://flatfile.com/docs/apps/custom/add-data-transformation)
     red.use(
@@ -156,8 +59,20 @@ export default function flatfileEventListener(listener: Client) {
           record.addError("email", "Invalid email address");
         }
 
+        // Validate a Record's phone number
+        const phoneNumber = record.get("phoneNumber") as string;
+        const phoneUtil = PhoneNumberUtil.getInstance();
+        try {
+          const parsedPhoneNumber = phoneUtil.parse(phoneNumber, "US");
+          if (!phoneUtil.isValidNumber(parsedPhoneNumber)) {
+            record.addError("phoneNumber", "Invalid phone number");
+          }
+        } catch (error) {
+          record.addError("phoneNumber", "Invalid phone number");
+        }
+
         return record;
-      })
+      }) as any
     );
 
     // Part 4: Configure a submit Action (https://flatfile.com/docs/apps/custom/submit-action)
@@ -227,5 +142,8 @@ export default function flatfileEventListener(listener: Client) {
           });
         }
       });
+
+    // Part 5: Dedupe Records
+    //red.use(dedupePlugin('dedupeRecords', { on: "email", keep: "last", debug: true }));
   });
 }

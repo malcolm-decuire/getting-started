@@ -5,7 +5,7 @@ curl --request POST \
   --header "Authorization: Bearer $(echo $FLATFILE_API_KEY)" \
   --header 'Content-Type: application/json' \
   --data '{
-  "name": "My First Workbook",
+  "name": "red",
   "labels": ["simple-demo"],
   "sheets": [
     {
